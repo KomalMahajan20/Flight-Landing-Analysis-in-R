@@ -1,0 +1,131 @@
+---
+title: "FAA_Part3"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(psych)
+library(tidyverse)
+library(ggplot2)
+library(funModeling)
+library(DataExplorer)
+library(broom)
+library(nnet)
+library(dplyr)
+```
+
+#Question 1
+```{r, warning=FALSE, message=FALSE}
+Data <- read.csv("FAA_log.csv", header=TRUE)
+str(Data)
+```
+
+After carrying out the steps 1-9 in part 1, we got the updated dataset with 831 observations and 8 variables. Categorizing aircraft variable 
+
+```{r, warning=FALSE, message=FALSE}
+Data$aircraft <- ifelse(Data$aircraft == "boeing",0,1)
+Data$aircraft <- as.factor(Data$aircraft)
+levels(Data$aircraft) <- c("boeing", "airbus")
+```
+
+#Creating a multinomial variable Y
+```{r, warning=FALSE, message=FALSE}
+Data$Y <- ifelse(Data$distance<1000,1,ifelse(Data$distance < 2500, 2,3))
+str(Data)
+```
+
+A new variable with 3 levels 1,2 and 3 has been created. Converting this variable into factors and discarding the distance variable
+
+```{r, warning=FALSE, message=FALSE}
+Data$Y <- as.factor(Data$Y)
+Data_1 <- Data[,-8]
+summary(Data_1)
+plot(Data$Y, xlab = "Levels of Landing Distance", ylab = "Count")
+```
+
+For level 2(459) - landing distance between 1000 and 2500(excluding) units - Number of flights are the highest followed by level 1(269) and level 3(103) respectively.
+```{r}
+plot(Data_1$speed_air ~ Data_1$speed_ground, col = rep(c("red", "blue"), each = 50), pch = 16, xlab = "Ground Speed", 
+    ylab = "Air speed")
+```
+
+We know that speed_air comes out to be a significant factor but has around 75% missing values. Also we can see that it is strongly correlated with speed_ground variable which doesn't contain any null values. For our further analysis, we will go ahead with speed_ground variable only, keeping the study consistent with the previous analysis.
+
+Duration variable also contains 50 null values as FAA2 didnt have duration column. If we will remove these 50 observations without considering it will become FAA1 dataset without abnormalities which may distort the quality. As from the summary statistic of duration variable, it can be inferred that there is insignificant gap between mean and median values thus we can impute the missing values using the median value of the duration variable for this study.
+
+#Fitting model with multinomial response variable
+```{r, warning=FALSE, message=FALSE}
+Data_f <- subset(Data_1, select=-speed_air)
+Data_f$duration[is.na(Data_f$duration)] <- median(Data_f$duration, na.rm = T)
+summary(Data_f)
+```
+
+```{r, warning=FALSE, message=FALSE}
+Model1 <- multinom(Y ~ ., Data_f)
+summary(Model1)
+```
+
+#Model Selection and Comparison using step()
+```{r, warning=FALSE, message=FALSE}
+model <- step(Model1)
+```
+
+```{r, warning=FALSE, message=FALSE}
+#Summary of model selected by step function
+summary(model)
+```
+
+#Comparison of Models
+```{r, warning=FALSE, message=FALSE}
+table1 <- data.frame ("Model" = c("Full Model","Step-AIC","Difference") ,"Deviance " = c(deviance(Model1) , deviance(model), deviance(model)-deviance(Model1)) ,"EDF" = c( Model1$edf , model$edf, model$edf-Model1$edf))
+table1
+```
+
+We can see that devaince is less and degree of freedom is more for full model than AIC model which implies overfitting of the data.
+#Chi-square test
+```{r, warning=FALSE, message=FALSE}
+pchisq<-pchisq(deviance(Model1)-deviance(model),Model1$edf-model$edf, lower=F)
+pchisq
+```
+
+```{r, warning=FALSE, message=FALSE}
+(Table <- tidy(model))
+```
+
+```{r, warning=FALSE, message=FALSE}
+xtabs(~predict(model)+Data_f$Y)
+```
+
+#Summary of Q-1
+1. Final model selected using AIC criterion contains the following predictors - speed_ground, height, pitch and aircraft type
+2. AIC and Deviance values = 446.26 and 426.26 respectively.
+##From the above tables summary statistics, it can be deduced that 
+2. The coefficient for pitch variable is low for both the cases, hence it is an insignificant factor.
+3. Factors which are impacting significantly landing distance are in the order of
+    speed_ground
+    height
+    aircraft
+4. Prediction accuracy is around 97%
+
+#Question -2
+```{r, warning=FALSE, message=FALSE}
+#As the variable of interest is number of passengers, we will use Poisson distribution for modeling
+model_np <- glm(no_pasg ~ .,family = poisson, data = Data_f)
+summary(model_np)
+```
+
+```{r, warning=FALSE, message=FALSE}
+#Using AIC
+step(model_np)
+```
+ 
+```{r, warning=FALSE, message=FALSE}
+drop1(model_np,test="Chisq")
+```
+#Conclusion -
+1. It can be easily inferred that using both the full model and model by step method the response variable, none of the variables are much significant(p-value not less that 0.05).
+2. Using chi-squared test, The variable height has p-value a bit more than 0.05 but still would not be a wise variable to predict the number of passenger as its estimated coefficient value is not that strong. AIC also returns the model with no significant predictor.
+
+##Hence, there is no significant predictor in the given dataset that can be used to predict the number of passengers on board.
